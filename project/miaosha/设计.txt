@@ -1,0 +1,108 @@
+1、登录模块
+流程：
+	用户登录->
+	校验数据->
+	校验用户->
+	用户信息存储到redis->
+	跳转到商品页面
+	
+技术点：
+	(1)密码
+		两次MD5加密
+		第一次加密：客户端 Pass = MD5(用户明文 固定salt)
+		第二次加密：服务端 Pass = MD5(用户输入 随机salt)
+
+	(2)分布式session
+		将用户信息存储到redis中
+		存储用户信息：将用户信息存储到redis中,key(token) value(user)
+		查询用户信息：token保存到cookie中，用户访问服务器的时候携带token，通过token就可以找到user信息
+	
+	(3)通过token获取用户信息
+		一般流程：
+			controller根据token去redis获取用户信息
+		问题：
+			导致很多代码重复
+		优化：
+			利用参数解析器，根据token去redis获取用户信息，然后将用户信息传递给controller
+	
+设计模式：
+	KeyPrefix：模板方法、单例模式
+	Result：单例模式
+	
+学习收获：
+	自定义校验器
+	自定义异常处理器
+	自定义参数解析器
+
+2、秒杀
+流程：
+	商品详情页(查询数据库,渲染html)
+	->
+	秒杀详情页
+	->
+	秒杀
+	
+技术点：
+	a)秒杀时间
+		后端将时间传递给前端，前端进行倒计时
+	b)秒杀 
+		减库存 下订单 写入秒杀订单
+
+3、优化
+(1)页面缓存
+商品详情页
+商品秒杀页
+WebContext webContext = new WebContext(request,
+                response,
+                request.getServletContext(),
+                request.getLocale(),
+                model.asMap());
+				
+html = thymeleafViewResolver.getTemplateEngine().process("goods_detail", webContext);
+
+
+(2)对象缓存
+	读：加载到缓存
+	更新：更新数据库，删除缓存
+
+(3)页面静态化
+	之前：客户端请求服务器(/template)，服务器渲染页面，将页面返回给客户端
+	优化：客户端请求服务器(/static)，将数据返回给客户端，客户端进行渲染页面
+
+(4)客户端缓存页面
+spring.web.resources.add-mappings=true
+spring.web.resources.cache.period= 3600
+spring.web.resources.chain.cache=true
+spring.web.resources.chain.enabled=true
+spring.web.resources.chain.compressed=true
+spring.web.resources.chain.html-application-cache=true
+spring.web.resources.static-locations=classpath:/static/
+
+
+4、秒杀问题
+(1)卖超
+where stcok > 0
+
+(2)同一个用户秒杀多个
+使用miaosha_order的(userId,goodsId)作为唯一索引
+
+5、秒杀优化
+原始流程：判断是否重复下单(数据库) 减库存(数据库) 下订单(数据库) 写入秒杀订单(数据库)
+
+优化思想：
+	(1)Redis预缓存减少数据库访问
+	(2)内存标记减少Redis访问
+	(3)请求先入队列缓冲,异步下单，增强用户体验
+	(4)Nginx水平扩展
+
+优化流程:
+	(1)系统初始化,把库存数量加载到Redis中
+	(2)收到请求,Redis预减库存,库存不足直接返回,否则进入3
+	(3)请求入队,立即返回排队中
+	(4)请求出队,生成订单,减少库存
+	(5)客户端轮询,是否秒杀成功
+
+5、安全优化
+(1)秒杀接口地址隐藏
+(2)数学公式验证码
+(3)接口限流防刷
